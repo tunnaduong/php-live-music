@@ -14,7 +14,7 @@ date_default_timezone_set('Asia/Ho_Chi_Minh');
 $API_KEY = 'AIzaSyCAph9O436dGbS5lGnMOZy2HY6yjgza2xg';
 
 // Get the start of the day in the server's timezone
-$startTimestamp = strtotime("2024-03-26 15:20:00");
+$startTimestamp = strtotime("2024-07-01 15:20:00");
 
 // Calculate elapsedTimeInSeconds
 $elapsedTimeInSeconds = time() - $startTimestamp;
@@ -22,13 +22,17 @@ $elapsedTimeInSeconds = time() - $startTimestamp;
 // Hàm lấy thông tin video từ ID video YouTube
 function getVideoInfo($videoId, $apiKey)
 {
-    // echo "Called once";
     $url = "https://www.googleapis.com/youtube/v3/videos?id=$videoId&key=$apiKey&part=snippet,contentDetails";
-    $response = file_get_contents($url);
+    $response = @file_get_contents($url);
+
+    if ($response === false) {
+        throw new Exception("Failed to fetch video info for video ID: $videoId");
+    }
+
     $data = json_decode($response, true);
 
     if ($data === null || !isset($data['items'][0])) {
-        return false; // Trả về false nếu không lấy được thông tin video
+        throw new Exception("Invalid video info received for video ID: $videoId");
     }
 
     return $data['items'][0];
@@ -37,7 +41,7 @@ function getVideoInfo($videoId, $apiKey)
 
 function getIdlePlaylist()
 {
-    $url = "https://c4k60.tunnaduong.com/api/v1.0/radio/idle/";
+    $url = "https://c4k60.com/api/v1.0/radio/idle/";
     $response = file_get_contents($url);
     $data = json_decode($response, true);
     return $data['idle_playlist'];
@@ -54,11 +58,19 @@ $currentVideoIndex = 0;
 if (!isset($_SESSION['videoInfos'])) {
     // If not, fetch all video information at once
     $_SESSION['videoInfos'] = array_map(function ($videoId) use ($API_KEY) {
-        return getVideoInfo($videoId, $API_KEY);
+        $videoInfo = getVideoInfo($videoId, $API_KEY);
+        if ($videoInfo === false) {
+            throw new Exception("Failed to get video info for video ID: $videoId");
+        }
+        return $videoInfo;
     }, $videoId);
 }
 
 $videoInfo = $_SESSION['videoInfos'][$currentVideoIndex];
+
+if ($videoInfo === false) {
+    throw new Exception("Failed to get video info for current video index: $currentVideoIndex");
+}
 
 // Thời gian hiện tại
 $currentTimestamp = time();
@@ -100,7 +112,15 @@ while ($elapsedTimeInSeconds > $videoDurationInSeconds) {
 
     // Get the next video info from the session
     $videoInfo = $_SESSION['videoInfos'][$currentVideoIndex];
+    if ($videoInfo === false) {
+        throw new Exception("Failed to get video info for current video index: $currentVideoIndex");
+    }
+
     $videoDuration = $videoInfo['contentDetails']['duration'];
+    if ($videoDuration === null) {
+        throw new Exception("Failed to get video duration for current video index: $currentVideoIndex");
+    }
+
     $videoDurationInSeconds = ISO8601ToSeconds($videoDuration);
 
     // Update currentSong
